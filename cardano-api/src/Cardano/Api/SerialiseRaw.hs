@@ -9,11 +9,10 @@ module Cardano.Api.SerialiseRaw
   , serialiseToRawBytesHexText
   ) where
 
-import           Prelude
+import           Cardano.Prelude
+import           Prelude (String)
 
-import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Base16 as Base16
-import           Data.Text (Text)
 import qualified Data.Text.Encoding as Text
 
 import           Cardano.Api.HasTypeProxy
@@ -32,8 +31,7 @@ serialiseToRawBytesHexText :: SerialiseAsRawBytes a => a -> Text
 serialiseToRawBytesHexText = Text.decodeUtf8 . serialiseToRawBytesHex
 
 deserialiseFromRawBytesHex :: SerialiseAsRawBytes a
-                           => AsType a -> ByteString -> Maybe a
-deserialiseFromRawBytesHex proxy hex =
-    case Base16.decode hex of
-      Right raw -> deserialiseFromRawBytes proxy raw
-      Left _msg -> Nothing
+                           => AsType a -> ByteString -> Either String a
+deserialiseFromRawBytesHex proxy hex = do
+  raw <- Base16.decode hex
+  note ("Cannot deserialise " ++ show hex) $ deserialiseFromRawBytes proxy raw
