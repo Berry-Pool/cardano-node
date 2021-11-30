@@ -165,6 +165,9 @@ makeStakeAddressRef mbStakeVerifier = do
         let stakeCred = StakeCredentialByScript (hashScript script)
         return (StakeAddressByValue stakeCred)
 
+      StakeVerifierAddress stakeAddr ->
+        pure $ StakeAddressByValue $ stakeAddressCredential stakeAddr
+
 buildShelleyAddress
   :: VerificationKey PaymentKey
   -> Maybe StakeVerifier
@@ -232,4 +235,3 @@ runAddressBuildScript
 runAddressBuildScript scriptFile networkId mOutputFile = do
   liftIO $ deprecationWarning "'address build'"
   runAddressBuild (PaymentVerifierScriptFile scriptFile) Nothing networkId mOutputFile
-
