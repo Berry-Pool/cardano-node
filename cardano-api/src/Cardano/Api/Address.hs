@@ -44,6 +44,7 @@ module Cardano.Api.Address (
     StakeAddress(..),
     StakeCredential(..),
     makeStakeAddress,
+    stakeAddressCredential,
     StakeKey,
     StakeExtendedKey,
 
@@ -630,3 +631,6 @@ fromShelleyStakeReference (Shelley.StakeRefPtr ptr) =
 fromShelleyStakeReference Shelley.StakeRefNull =
   NoStakeAddress
 
+-- | Get credential from a stake address. This drops the network information.
+stakeAddressCredential :: StakeAddress -> StakeCredential
+stakeAddressCredential (StakeAddress _ scred) = fromShelleyStakeCredential scred

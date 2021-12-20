@@ -101,6 +101,7 @@ module Cardano.Api (
     StakeAddress,
     StakeCredential,
     makeStakeAddress,
+    stakeAddressCredential,
     StakeKey,
     StakeExtendedKey,
 
