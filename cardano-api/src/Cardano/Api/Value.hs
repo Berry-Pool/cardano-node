@@ -72,7 +72,6 @@ import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text
 
 import qualified Cardano.Chain.Common as Byron
-
 import qualified Cardano.Ledger.Coin as Shelley
 import           Cardano.Ledger.Crypto (StandardCrypto)
 import qualified Cardano.Ledger.Mary.Value as Mary
@@ -83,7 +82,7 @@ import           Cardano.Api.Script
 import           Cardano.Api.SerialiseCBOR
 import           Cardano.Api.SerialiseRaw
 import           Cardano.Api.SerialiseUsing
-import           Cardano.Api.Utils (note)
+import           Cardano.Api.Utils (failEitherWith)
 
 
 -- ----------------------------------------------------------------------------
@@ -359,11 +358,9 @@ instance FromJSON ValueNestedRep where
       parsePid ("lovelace", q) = ValueNestedBundleAda <$> parseJSON q
       parsePid (pid, quantityBundleJson) = do
         sHash <-
-          note ("Expected hex encoded PolicyId but got: " <> Text.unpack pid) $
+          failEitherWith ("Failure when deserialising PolicyId: " ++) $
           deserialiseFromRawBytesHex AsScriptHash $ Text.encodeUtf8 pid
-        quantityBundle <- parseJSON quantityBundleJson
-        pure $ ValueNestedBundle (PolicyId sHash) quantityBundle
-
+        ValueNestedBundle (PolicyId sHash) <$> parseJSON quantityBundleJson
 
 -- ----------------------------------------------------------------------------
 -- Printing and pretty-printing

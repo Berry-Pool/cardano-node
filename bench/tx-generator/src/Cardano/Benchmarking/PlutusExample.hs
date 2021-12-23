@@ -62,8 +62,8 @@ readScript fp = do
 toScriptHash :: String -> Hash ScriptData
 toScriptHash str
   = case deserialiseFromRawBytesHex (AsHash AsScriptData) (BSC.pack str) of
-    Just x -> x
-    Nothing  -> error $ "Invalid datum hash: " ++ show str
+    Right x -> x
+    Left msg -> error $ "Invalid datum hash: " ++ msg
 
 preExecuteScript ::
      ProtocolParameters

@@ -97,47 +97,38 @@ module Cardano.Api.Script (
 
 import           Prelude
 
+import           Control.Applicative
+import           Control.Monad
+import           Data.Aeson (Value (..), object, (.:), (.=))
+import qualified Data.Aeson as Aeson
+import qualified Data.Aeson.Encoding as Aeson
+import qualified Data.Aeson.Types as Aeson
 import qualified Data.ByteString.Lazy as LBS
 import           Data.ByteString.Short (ShortByteString)
 import qualified Data.ByteString.Short as SBS
 import           Data.Foldable (toList)
 import           Data.Scientific (toBoundedInteger)
+import qualified Data.Sequence.Strict as Seq
 import           Data.String (IsString)
 import           Data.Text (Text)
-import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text
 import           Data.Type.Equality (TestEquality (..), (:~:) (Refl))
 import           Data.Typeable (Typeable)
-import           Numeric.Natural (Natural)
-
-import           Data.Aeson (Value (..), object, (.:), (.=))
-import qualified Data.Aeson as Aeson
-import qualified Data.Aeson.Encoding as Aeson
-import qualified Data.Aeson.Types as Aeson
-import qualified Data.Sequence.Strict as Seq
 import           Data.Vector (Vector)
 import qualified Data.Vector as Vector
-
-import           Control.Applicative
-import           Control.Monad
+import           Numeric.Natural (Natural)
 
 import qualified Cardano.Binary as CBOR
-
 import qualified Cardano.Crypto.Hash.Class as Crypto
-
-import           Cardano.Slotting.Slot (SlotNo)
-
+import qualified Cardano.Ledger.Alonzo.Language as Alonzo
+import qualified Cardano.Ledger.Alonzo.Scripts as Alonzo
 import qualified Cardano.Ledger.Core as Ledger
 import qualified Cardano.Ledger.Era as Ledger
-
 import qualified Cardano.Ledger.Keys as Shelley
 import qualified Cardano.Ledger.Shelley.Scripts as Shelley
 import qualified Cardano.Ledger.ShelleyMA.Timelocks as Timelock
+import           Cardano.Slotting.Slot (SlotNo)
 import           Ouroboros.Consensus.Shelley.Eras (StandardCrypto)
-
-import qualified Cardano.Ledger.Alonzo.Language as Alonzo
-import qualified Cardano.Ledger.Alonzo.Scripts as Alonzo
-
 import qualified Plutus.V1.Ledger.Examples as Plutus
 
 import           Cardano.Api.Eras
@@ -150,6 +141,7 @@ import           Cardano.Api.SerialiseJSON
 import           Cardano.Api.SerialiseRaw
 import           Cardano.Api.SerialiseTextEnvelope
 import           Cardano.Api.SerialiseUsing
+import           Cardano.Api.Utils (failEitherWith)
 
 {- HLINT ignore "Use section" -}
 
@@ -1301,7 +1293,7 @@ parseScriptAfter lang =
         _       -> fail "\"after\" script value not found"
 
 parsePaymentKeyHash :: Text -> Aeson.Parser (Hash PaymentKey)
-parsePaymentKeyHash txt =
-    case deserialiseFromRawBytesHex (AsHash AsPaymentKey) (Text.encodeUtf8 txt) of
-      Just payKeyHash -> return payKeyHash
-      Nothing -> fail $ "Error deserialising payment key hash: " <> Text.unpack txt
+parsePaymentKeyHash =
+  failEitherWith ("Error deserialising payment key hash: " ++)
+  . deserialiseFromRawBytesHex (AsHash AsPaymentKey)
+  . Text.encodeUtf8

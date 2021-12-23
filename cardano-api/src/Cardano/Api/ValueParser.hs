@@ -20,7 +20,7 @@ import           Text.Parsec.String (Parser)
 import           Text.ParserCombinators.Parsec.Combinator (many1)
 
 import           Cardano.Api.SerialiseRaw
-import           Cardano.Api.Utils (note)
+import           Cardano.Api.Utils (failEitherWith)
 import           Cardano.Api.Value
 
 -- | Parse a 'Value' from its string representation.
@@ -115,7 +115,7 @@ decimal = do
 assetName :: Parser AssetName
 assetName = do
   hexText <- many hexDigit
-  note "AssetName deserisalisation failed" $
+  failEitherWith ("AssetName deserisalisation failed: " ++) $
     deserialiseFromRawBytesHex AsAssetName $ BSC.pack hexText
 
 -- | Policy ID parser.
@@ -123,8 +123,8 @@ policyId :: Parser PolicyId
 policyId = do
   hexText <- many1 hexDigit
   case textToPolicyId hexText of
-    Just p -> pure p
-    Nothing ->
+    Right p -> pure p
+    Left _ ->
       fail $ "expecting a 56 hex-encoded policy ID, but found only "
           ++ show (length hexText) ++ " hex digits"
   where

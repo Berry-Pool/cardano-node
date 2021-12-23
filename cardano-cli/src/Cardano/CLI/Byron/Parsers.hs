@@ -278,8 +278,8 @@ parseTxIdAtto :: Atto.Parser TxId
 parseTxIdAtto = (<?> "Transaction ID (hexadecimal)") $ do
   bstr <- Atto.takeWhile1 Char.isHexDigit
   case deserialiseFromRawBytesHex AsTxId bstr of
-    Just addr -> return addr
-    Nothing -> fail $ "Incorrect transaction id format:: " ++ show bstr
+    Right addr -> return addr
+    Left msg -> fail $ "Incorrect transaction id format: " ++ msg
 
 parseTxIxAtto :: Atto.Parser TxIx
 parseTxIxAtto = toEnum <$> Atto.decimal
@@ -758,4 +758,3 @@ parseSigningKeyFile opt desc = SigningKeyFile <$> parseFilePath opt desc
 parseGenesisFile :: String -> Parser GenesisFile
 parseGenesisFile opt =
   GenesisFile <$> parseFilePath opt "Genesis JSON file."
-
