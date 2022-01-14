@@ -1373,3 +1373,36 @@ docInboundGovernor peerAddr = Documented
   --     []
   --     ""
   ]
+
+--------------------------------------------------------------------------------
+-- InboundGovernor Transition Tracer
+--------------------------------------------------------------------------------
+
+namesForInboundGovernorTransition
+  :: InboundGovernor.RemoteTransitionTrace peerAddr -> [Text]
+namesForInboundGovernorTransition _ = ["InboundGovernorTransition"]
+
+severityInboundGovernorTransition
+  :: InboundGovernor.RemoteTransitionTrace peerAddr -> SeverityS
+severityInboundGovernorTransition _ = Debug
+
+instance (Show peerAddr, ToJSON peerAddr)
+      => LogFormatting (InboundGovernor.RemoteTransitionTrace peerAddr) where
+    forMachine _dtal (ConnectionManager.TransitionTrace peerAddr tr) =
+      mkObject $ reverse
+        [ "kind"    .= String "ConnectionManagerTransition"
+        , "address" .= toJSON peerAddr
+        , "from"    .= toJSON (ConnectionManager.fromState tr)
+        , "to"      .= toJSON (ConnectionManager.toState   tr)
+        ]
+    forHuman = pack . show
+    asMetrics _ = []
+
+docInboundGovernorTransition
+  :: Documented (InboundGovernor.RemoteTransitionTrace peerAddr)
+docInboundGovernorTransition = Documented
+  [ DocMsg
+      anyProto
+      []
+      ""
+  ]

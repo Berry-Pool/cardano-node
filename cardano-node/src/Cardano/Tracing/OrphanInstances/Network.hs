@@ -87,6 +87,8 @@ import           Ouroboros.Network.Protocol.Handshake (HandshakeException (..),
                    HandshakeProtocolError (..), RefuseReason (..))
 import           Ouroboros.Network.Protocol.LocalStateQuery.Type (LocalStateQuery)
 import qualified Ouroboros.Network.Protocol.LocalStateQuery.Type as LocalStateQuery
+import           Ouroboros.Network.Protocol.LocalTxMonitor.Type (LocalTxMonitor)
+import qualified Ouroboros.Network.Protocol.LocalTxMonitor.Type as LocalTxMonitor
 import           Ouroboros.Network.Protocol.LocalTxSubmission.Type (LocalTxSubmission)
 import qualified Ouroboros.Network.Protocol.LocalTxSubmission.Type as LocalTxSub
 import           Ouroboros.Network.Protocol.Trans.Hello.Type (Hello)
@@ -558,6 +560,10 @@ instance ToObject localPeer
   trTransformer = trStructured
 
 instance (applyTxErr ~ ApplyTxErr blk, ToObject localPeer)
+     => Transformable Text IO (TraceLabelPeer localPeer (NtN.TraceSendRecv (LocalTxMonitor (GenTxId blk) (GenTx blk) SlotNo))) where
+  trTransformer = trStructured
+
+instance (applyTxErr ~ ApplyTxErr blk, ToObject localPeer)
      => Transformable Text IO (TraceLabelPeer localPeer (NtN.TraceSendRecv (LocalTxSubmission (GenTx blk) applyTxErr))) where
   trTransformer = trStructured
 
@@ -805,6 +811,52 @@ instance (forall result. Show (query result))
              , "agency" .= String (pack $ show stok)
              ]
   toObject _verb (AnyMessageAndAgency stok LocalStateQuery.MsgDone{}) =
+    mkObject [ "kind" .= String "MsgDone"
+             , "agency" .= String (pack $ show stok)
+             ]
+
+instance ToObject (AnyMessageAndAgency (LocalTxMonitor txid tx slotno)) where
+  toObject _verb (AnyMessageAndAgency stok LocalTxMonitor.MsgAcquire {}) =
+    mkObject [ "kind" .= String "MsgAcuire"
+             , "agency" .= String (pack $ show stok)
+             ]
+  toObject _verb (AnyMessageAndAgency stok LocalTxMonitor.MsgAcquired {}) =
+    mkObject [ "kind" .= String "MsgAcuired"
+             , "agency" .= String (pack $ show stok)
+             ]
+  toObject _verb (AnyMessageAndAgency stok LocalTxMonitor.MsgAwaitAcquire {}) =
+    mkObject [ "kind" .= String "MsgAwaitAcuire"
+             , "agency" .= String (pack $ show stok)
+             ]
+  toObject _verb (AnyMessageAndAgency stok LocalTxMonitor.MsgNextTx {}) =
+    mkObject [ "kind" .= String "MsgNextTx"
+             , "agency" .= String (pack $ show stok)
+             ]
+  toObject _verb (AnyMessageAndAgency stok LocalTxMonitor.MsgReplyNextTx {}) =
+    mkObject [ "kind" .= String "MsgReplyNextTx"
+             , "agency" .= String (pack $ show stok)
+             ]
+  toObject _verb (AnyMessageAndAgency stok LocalTxMonitor.MsgHasTx {}) =
+    mkObject [ "kind" .= String "MsgHasTx"
+             , "agency" .= String (pack $ show stok)
+             ]
+  toObject _verb (AnyMessageAndAgency stok LocalTxMonitor.MsgReplyHasTx {}) =
+    mkObject [ "kind" .= String "MsgReplyHasTx"
+             , "agency" .= String (pack $ show stok)
+             ]
+  toObject _verb (AnyMessageAndAgency stok LocalTxMonitor.MsgGetSizes {}) =
+    mkObject [ "kind" .= String "MsgGetSizes"
+             , "agency" .= String (pack $ show stok)
+             ]
+  toObject _verb (AnyMessageAndAgency stok LocalTxMonitor.MsgReplyGetSizes {}) =
+    mkObject [ "kind" .= String "MsgReplyGetSizes"
+             , "agency" .= String (pack $ show stok)
+             ]
+  toObject _verb (AnyMessageAndAgency stok LocalTxMonitor.MsgRelease {}) =
+    mkObject [ "kind" .= String "MsgRelease"
+             , "agency" .= String (pack $ show stok)
+             ]
+  toObject _verb (AnyMessageAndAgency stok LocalTxMonitor.MsgDone {}) =
     mkObject [ "kind" .= String "MsgDone"
              , "agency" .= String (pack $ show stok)
              ]
