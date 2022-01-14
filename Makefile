@@ -58,6 +58,9 @@ shell:
 cli node:
 	cabal --ghc-options="+RTS -qn8 -A32M -RTS" build cardano-$@
 
+trace-documentation:
+	cabal run -- exe:cardano-node trace-documentation --config 'configuration/cardano/mainnet-config-new-tracing.yaml' --output-file 'doc/new-tracing/tracers_doc_generated.md'
+
 BENCH_REPEATS ?= 3
 BENCH_CONFIG ?= both
 BENCH_TAG ?= HEAD
