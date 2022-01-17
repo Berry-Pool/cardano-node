@@ -39,6 +39,7 @@ module Cardano.Api.Tx (
     makeShelleyBootstrapWitness,
     makeShelleySignature,
     getShelleyKeyWitnessVerificationKey,
+    getTxBodyAndWitnesses,
 
     -- * Data family instances
     AsType(AsTx, AsByronTx, AsShelleyTx, AsMaryTx, AsAllegraTx, AsAlonzoTx,
@@ -475,7 +476,7 @@ getTxBody (ShelleyTx era tx) =
                     (strictMaybeToMaybe auxiliaryData)
                     (TxScriptValidity txScriptValidityInEra (isValidToScriptValidity isValid))
 
-
+-- TODO: Change name to getTxKeyWitnesses
 getTxWitnesses :: forall era. Tx era -> [KeyWitness era]
 getTxWitnesses (ByronTx Byron.ATxAux { Byron.aTaWitness = witnesses }) =
     map ByronKeyWitness

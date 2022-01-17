@@ -1699,6 +1699,9 @@ deserialiseShelleyBasedTxBody era bs =
               (flip CBOR.runAnnotator fbs (return $ TxScriptValidity sValiditySupported scriptValidity))
         _ -> fail $ "expected tx body tuple of size 2, 3, 4 or 6, got " <> show len
 
+serialiseShelleyBasedTxBodyLedgerCddl :: TxBody era -> ByteString
+serialiseShelleyBasedTxBodyLedgerCddl = error ""
+
 instance IsCardanoEra era => HasTextEnvelope (TxBody era) where
     textEnvelopeType _ =
       case cardanoEra :: CardanoEra era of
