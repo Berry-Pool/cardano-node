@@ -42,6 +42,7 @@ import qualified Cardano.Binary as CBOR
 import           Cardano.Api.Eras
 import           Cardano.Api.HasTypeProxy
 import           Cardano.Api.SerialiseCBOR
+import           Cardano.Api.SerialiseTextEnvelope
 import           Cardano.Api.Tx
 import           Cardano.Api.TxBody
 
@@ -59,72 +60,45 @@ import           Cardano.Api.TxBody
 -- TODO: look at HasTextEnvelope (Tx era) for inspiration with respect to teCddlType
 -- Which could really be a text field.
 data TextEnvelopeCddl = TextEnvelopeCddl
-  { teCddlType :: !TextEnvelopeCddlType
+  { teCddlType :: !Text
   , teCddlDescription :: !Text
   , teCddlRawCBOR :: !ByteString
   } deriving (Eq, Show)
-
-data TextEnvelopeCddlType
-  = TextEnvelopeCddlWitnessedTx
-  | TextEnvelopeCddlUnwitnessedTx
-  deriving (Eq, Show)
-
 
 data TextEnvelopeCddlError
   = TextEnvelopeCddlErrExpectedUnwitnessed TextEnvelopeCddl
   | TextEnvelopeCddlErrExpectedWitnessed TextEnvelopeCddl
   | TextEnvelopeCddlErrCBORDecodingError DecoderError
 
--- TODO: We need to check Tx era directly for witnesses and error on them
-serialiseWitnessedTxLedgerCddl :: IsCardanoEra era => Tx era -> TextEnvelopeCddl
-serialiseWitnessedTxLedgerCddl tx =
+serialiseTxLedgerCddl :: forall era. IsCardanoEra era => Tx era -> TextEnvelopeCddl
+serialiseTxLedgerCddl tx =
   TextEnvelopeCddl
-    { teCddlType = TextEnvelopeCddlWitnessedTx
-    , teCddlDescription = "Witnessed Ledger Tx in CDDL Format"
+    { teCddlType = genType tx
+    , teCddlDescription = "Ledger CDDL Format"
     , teCddlRawCBOR = serialiseToCBOR tx
     -- The SerialiseAsCBOR (Tx era) instance serializes to the CDDL format
     }
+ where
+  genTxType :: Text
+  genTxType = case cardanoEra :: CardanoEra era of
+        ByronEra   -> "Tx Byron"
+        ShelleyEra -> "Tx Shelley"
+        AllegraEra -> "Tx AllegraEra"
+        MaryEra    -> "Tx MaryEra"
+        AlonzoEra  -> "Tx AlonzoEra"
 
--- TODO: Likewise here. Makes more sense to check the Tx directly
-deserialiseWitnessedTxLedgerCddl
-  :: CardanoEra era
+  genType :: Tx era -> Text
+  genType tx' = case getTxWitnesses tx' of
+                  [] -> "Unwitnessed " <> genTxType
+                  _ -> "Witnessed " <> genTxType
+
+deserialiseTxLedgerCddl
+  :: IsCardanoEra era
+  => CardanoEra era
   -> TextEnvelopeCddl
   -> Either TextEnvelopeCddlError (Tx era)
-deserialiseWitnessedTxLedgerCddl era tec =
-  case teCddlType tec of
-    TextEnvelopeCddlUnwitnessedTx -> Left $ TextEnvelopeCddlErrExpectedWitnessed tec
-    TextEnvelopeCddlWitnessedTx -> first TextEnvelopeCddlErrCBORDecodingError
-                                     $ deserialiseTx era $ teCddlRawCBOR tec
-
--- TODO: Need to clarify that we are talking about no KEY witnesses.
--- consider a function to check this and produce a wrapped TxBody in a newtype.
--- We will potentially have script witnesses
--- in the tx body
-serialiseUnwitnessedTxLedgerCddl :: IsCardanoEra era => TxBody era -> TextEnvelopeCddl
-serialiseUnwitnessedTxLedgerCddl tBody =
-  TextEnvelopeCddl
-    { teCddlType = TextEnvelopeCddlUnwitnessedTx
-    , teCddlDescription = "Unwitnessed Ledger Tx in CDDL Format"
-    , teCddlRawCBOR = serialiseToCBOR $ makeSignedTransaction [] tBody
-    -- The SerialiseAsCBOR (Tx era) instance serializes to the CDDL format
-    }
-
-deserialiseUnwitnessedTxLedgerCddl
-  :: CardanoEra era
-  -> TextEnvelopeCddl
-  -> Either TextEnvelopeCddlError (TxBody era)
-deserialiseUnwitnessedTxLedgerCddl era tec =
-  case teCddlType tec of
-    TextEnvelopeCddlWitnessedTx ->
-      Left $ TextEnvelopeCddlErrExpectedUnwitnessed tec
-    TextEnvelopeCddlUnwitnessedTx -> do
-      unwitTx <- first TextEnvelopeCddlErrCBORDecodingError
-                   $ deserialiseTx era $ teCddlRawCBOR tec
-      case getTxBodyAndWitnesses unwitTx of
-        -- TODO: Use getTxWitnesses instead
-        (bdy, []) -> Right bdy
-        (bdy, wits) -> Left $ TextEnvelopeCddlErrExpectedUnwitnessed tec
-
+deserialiseTxLedgerCddl era tec =
+  first TextEnvelopeCddlErrCBORDecodingError $ deserialiseTx era $ teCddlRawCBOR tec
 
 deserialiseTx
   :: forall era. IsCardanoEra era
