@@ -44,7 +44,8 @@ If you are using a different flavor of Linux, you will need to use the correct p
 
 #### Downloading, unpacking, installing, and updating Cabal:
 
-    Download the relevant `cabal-install` (version 3.6.2.0) binary from https://www.haskell.org/cabal/download.html
+Download the relevant `cabal-install` (version 3.6.2.0) binary from https://www.haskell.org/cabal/download.html
+
     tar -xf cabal-install-3.6.2.0-xxxxxx.tar.xz
     rm cabal-install-3.6.2.0-xxxxxx.tar.xz
     mkdir -p ~/.local/bin
