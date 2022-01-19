@@ -1,6 +1,9 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 {-# OPTIONS_GHC -Wno-unused-imports #-}
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
@@ -10,22 +13,14 @@ module Cardano.TxSubmit.Web
   ( runTxSubmitServer
   ) where
 
-import           Cardano.Api (AllegraEra, AnyCardanoEra (AnyCardanoEra),
-                   AnyConsensusMode (AnyConsensusMode), AnyConsensusModeParams (..),
-                   AsType (..), CardanoEra (..), Error (..),
-                   FromSomeType (..), HasTypeProxy (AsType), InAnyCardanoEra (..),
-                   LocalNodeConnectInfo (LocalNodeConnectInfo, localConsensusModeParams, localNodeNetworkId, localNodeSocketPath),
-                   NetworkId, SerialiseAsCBOR (..), ShelleyEra, ToJSON, Tx, TxId (..),
-                   TxInMode (TxInMode),
-                   TxValidationErrorInMode (TxValidationEraMismatch, TxValidationErrorInMode),
-                   consensusModeOnly, getTxBody, getTxId, submitTxToNodeLocal, toEraInMode)
+import           Cardano.Api
 import           Cardano.BM.Trace (Trace, logInfo)
 import           Cardano.Binary (DecoderError (..))
 import           Cardano.TxSubmit.CLI.Types (SocketPath (SocketPath))
 import           Cardano.TxSubmit.Metrics (TxSubmitMetrics (..))
 import           Cardano.TxSubmit.Rest.Types (WebserverConfig (..), toWarpSettings)
-import           Cardano.TxSubmit.Types (EnvSocketError (..), RawCborDecodeError (..),
-                   TxCmdError (TxCmdEraConsensusModeMismatch, TxCmdTxReadError, TxCmdTxSubmitError, TxCmdTxSubmitErrorEraMismatch),
+import           Cardano.TxSubmit.Types (ExUnitCalculation(..), ScriptType(..), EnvSocketError (..), RawCborDecodeError (..),
+                   TxCmdError (TxCmdEraConsensusModeMismatch, TxCmdTxReadError, TxCmdTxSubmitError, TxCmdTxSubmitErrorEraMismatch, TxCmdAcquireFailure, TxCmdByronEra, TxCmdUnsupportedMode, TxCmdEraConsensusModeMismatchTxBalance, TxCmdExecutionError),
                    TxSubmitApi, TxSubmitApiRecord (..), TxSubmitWebApiError (TxSubmitFail),
                    renderTxCmdError)
 import           Cardano.TxSubmit.Util (logException)
@@ -36,7 +31,7 @@ import           Control.Monad.Except (ExceptT, MonadError (throwError), MonadIO
 import           Control.Monad.IO.Class (liftIO)
 import           Control.Monad.Trans.Except.Extra (firstExceptT, handleIOExceptT, hoistEither,
                    hoistMaybe, left, newExceptT)
-import           Data.Aeson (ToJSON (..))
+import           Data.Aeson (ToJSON (..), (.=), object)
 import           Data.Bifunctor (first, second)
 import           Data.ByteString.Char8 (ByteString)
 import           Data.Either (Either (..), partitionEithers)
@@ -69,6 +64,13 @@ import qualified Ouroboros.Network.Protocol.LocalTxSubmission.Client as Net.Tx
 import qualified Servant
 import qualified System.IO as IO
 import qualified System.Metrics.Prometheus.Metric.Gauge as Gauge
+
+import GHC.Records (HasField (..))
+import qualified Data.Set as Set
+import qualified Data.Map as Map
+import Data.Maybe
+import Control.Monad (join)
+import Cardano.Prelude (lift, Word, Bool(..), all)
 
 runTxSubmitServer
   :: Trace IO Text
@@ -133,6 +135,18 @@ readByteStringTx = firstExceptT TxCmdTxReadError . hoistEither . deserialiseAnyO
   , FromSomeType (AsTx AsAlonzoEra)  (InAnyCardanoEra AlonzoEra)
   ]
 
+getScriptType :: ScriptWitnessIndex -> ScriptType
+getScriptType (ScriptWitnessIndexTxIn _) = TxInput
+getScriptType (ScriptWitnessIndexMint _) = Mint
+getScriptType (ScriptWitnessIndexCertificate _) = Certificate
+getScriptType (ScriptWitnessIndexWithdrawal _) = Withdrawal
+
+getScriptWitnessIndex :: ScriptWitnessIndex -> Word
+getScriptWitnessIndex (ScriptWitnessIndexTxIn i) = i
+getScriptWitnessIndex (ScriptWitnessIndexMint i) = i
+getScriptWitnessIndex (ScriptWitnessIndexCertificate i) = i
+getScriptWitnessIndex (ScriptWitnessIndexWithdrawal i) = i
+
 txSubmitPost
   :: Trace IO Text
   -> TxSubmitMetrics
@@ -140,31 +154,59 @@ txSubmitPost
   -> NetworkId
   -> SocketPath
   -> ByteString
-  -> Handler TxId
+  -> Handler [ExUnitCalculation]
 txSubmitPost trace metrics (AnyConsensusModeParams cModeParams) networkId (SocketPath socketPath) txBytes = handle $ do
     InAnyCardanoEra era tx <- readByteStringTx txBytes
-    let cMode = AnyConsensusMode $ consensusModeOnly cModeParams
-    eraInMode <- hoistMaybe
-                   (TxCmdEraConsensusModeMismatch cMode (AnyCardanoEra era))
-                   (toEraInMode era $ consensusModeOnly cModeParams)
-    let txInMode = TxInMode tx eraInMode
-        localNodeConnInfo = LocalNodeConnectInfo
-                              { localConsensusModeParams = cModeParams
-                              , localNodeNetworkId = networkId
-                              , localNodeSocketPath = socketPath
-                              }
 
-    res <- liftIO $ submitTxToNodeLocal localNodeConnInfo txInMode
-    case res of
-      Net.Tx.SubmitSuccess -> do
-        liftIO $ T.putStrLn "Transaction successfully submitted."
-        return $ getTxId (getTxBody tx)
-      Net.Tx.SubmitFail reason ->
-        case reason of
-          TxValidationErrorInMode err _eraInMode -> left . TxCmdTxSubmitError . T.pack $ show err
-          TxValidationEraMismatch mismatchErr -> left $ TxCmdTxSubmitErrorEraMismatch mismatchErr
+    let txBody = getTxBody tx
+        (TxBody (TxBodyContent {txIns=txinputs})) = txBody
+        onlyInputs = [input | (input,_) <- txinputs]
+        consensusMode = consensusModeOnly cModeParams
+
+    case (consensusMode, cardanoEraStyle era) of
+      (CardanoMode, ShelleyBasedEra sbe) -> do
+
+        eraInMode <- case toEraInMode era CardanoMode of
+            Just result -> return result
+            Nothing ->
+              left TxCmdEraConsensusModeMismatchTxBalance
+        let localNodeConnInfo = LocalNodeConnectInfo
+                                  { localConsensusModeParams = cModeParams
+                                  , localNodeNetworkId = networkId
+                                  , localNodeSocketPath = socketPath
+                                  }
+
+        (utxo, pparams, eraHistory, systemStart) <-
+          newExceptT . fmap (join . first TxCmdAcquireFailure) $
+            executeLocalStateQueryExpr localNodeConnInfo Nothing $ \_ntcVersion -> runExceptT $ do
+
+              utxo <- firstExceptT TxCmdTxSubmitErrorEraMismatch . newExceptT . queryExpr
+                $ QueryInEra eraInMode $ QueryInShelleyBasedEra sbe
+                $ QueryUTxO (QueryUTxOByTxIn (Set.fromList onlyInputs))
+
+              pparams <- firstExceptT TxCmdTxSubmitErrorEraMismatch . newExceptT . queryExpr
+                $ QueryInEra eraInMode $ QueryInShelleyBasedEra sbe QueryProtocolParameters
+
+              eraHistory <- lift . queryExpr $ QueryEraHistory CardanoModeIsMultiEra
+
+              systemStart <- lift $ queryExpr QuerySystemStart
+
+
+              return (utxo, pparams, eraHistory, systemStart)
+
+        case evaluateTransactionExecutionUnits eraInMode systemStart eraHistory pparams utxo txBody of
+          Left _ -> left TxCmdExecutionError
+          Right ex -> do
+            let rawExUnits = Map.toList ex
+            case (all (\(_, res) -> case res of Left _ -> False; Right _ -> True ) rawExUnits) of
+              True -> return $ collectExUnits rawExUnits 
+              False -> left TxCmdExecutionError
+
+      (_, LegacyByronEra) -> left TxCmdByronEra
+      (wrongMode, _) -> left (TxCmdUnsupportedMode (AnyConsensusMode wrongMode))
+        
     where
-      handle :: ExceptT TxCmdError IO TxId -> Handler TxId
+      handle :: ExceptT TxCmdError IO [ExUnitCalculation] -> Handler [ExUnitCalculation]
       handle f = do
         result <- liftIO $ runExceptT f
         handleSubmitResult result
@@ -172,27 +214,24 @@ txSubmitPost trace metrics (AnyConsensusModeParams cModeParams) networkId (Socke
       errorResponse :: ToJSON e => e -> Handler a
       errorResponse e = throwError $ err400 { errBody = Aeson.encode e }
 
+      collectExUnits :: [(ScriptWitnessIndex, (Either ScriptExecutionError ExecutionUnits))] -> [ExUnitCalculation]
+      collectExUnits [] = []
+      collectExUnits ((w,result):t) = case result of
+        Left _ -> collectExUnits t -- ignore, failure checked in step before
+        Right units -> ExUnitCalculation {scriptWitness = getScriptType w, index = getScriptWitnessIndex w, executionUnits = units} : collectExUnits t
+
       -- Log relevant information, update the metrics, and return the result to
       -- the client.
-      handleSubmitResult :: Either TxCmdError TxId -> Handler TxId
+      handleSubmitResult :: Either TxCmdError [ExUnitCalculation] -> Handler [ExUnitCalculation]
       handleSubmitResult res =
         case res of
           Left err -> do
             liftIO $ logInfo trace $
-              "txSubmitPost: failed to submit transaction: "
+              "txCalc: failed to calculate ex units: "
                 <> renderTxCmdError err
             errorResponse (TxSubmitFail err)
-          Right txid -> do
+          Right exUnitsCalc -> do
             liftIO $ logInfo trace $
-              "txSubmitPost: successfully submitted transaction "
-                <> renderMediumTxId txid
+              "txCalc: successfully calculated ex units "
             liftIO $ Gauge.inc (tsmCount metrics)
-            pure txid
-
--- | Render the first 16 characters of a transaction ID.
-renderMediumTxId :: TxId -> Text
-renderMediumTxId (TxId hash) = renderMediumHash hash
-
--- | Render the first 16 characters of a hex-encoded hash.
-renderMediumHash :: Crypto.Hash crypto a -> Text
-renderMediumHash = T.take 16 . T.decodeLatin1 . Crypto.hashToBytesAsHex
+            pure exUnitsCalc
